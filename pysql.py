@@ -15,18 +15,6 @@ STATS = {
     'STATS': {'success': 0, 'error': 0},
 }
 
-# Look up table
-COMMAND_HANDLERS = {
-    'PUT': handle_put,
-    'GET': handle_get,
-    'GETLIST': handle_getlist,
-    'PUTLIST': handle_putlist,
-    'INCREMENT': handle_increment,
-    'APPEND': handle_append,
-    'DELETE': handle_delete,
-    'STATS': handle_stats,
-}
-
 DATA_STORE = {}
 
 def main():
@@ -37,6 +25,11 @@ def main():
         connection, address = SOCKET.accept()
         print("New connection from [{}]".format(address))
         data = connection.recv(4096).decode()
+
+        if data.startswith('CLOSE'):
+            connection.close()
+            return
+
         command, key, value = parse_message(data)
 
         if command == 'STATS':
@@ -49,8 +42,10 @@ def main():
             response = (False, 'Unknown command type [{}]'.format(command))
 
         update_stats(command, response[0])
-        connection.sendall('{};{}'.format(response[0], response[1]))
-        connection.close()
+
+        # Python3 specific
+        to_bytes = ("{};{}".format(response[0], response[1])).encode()
+        connection.sendall(to_bytes)
 
 # Parse and convert values into given type.
 def parse_message(data):
@@ -76,13 +71,13 @@ def update_stats(command, success):
 
 def handle_put(key, value):
     DATA_STORE[key] = value
-    return (True, 'Key [{}] set to [{}]'.format(key, value))
+    return (True, "Key [{}] set to [{}]".format(key, value))
 
 def handle_get(key):
     if key in DATA_STORE:
         return (True, DATA_STORE[key])
     else:
-        return (False, 'KeyError: Key [{}] not found'.format(key))
+        return (False, "KeyError: Key [{}] not found".format(key))
 
 def handle_putlist(key, value):
     return handle_put(key, value)
@@ -106,7 +101,7 @@ def handle_increment(key):
         return (False, "TypeError: Key [{}] contains not-integer values ([{}])".format(key, value))
     else:
         DATA_STORE[key] = value + 1
-        return (True, 'Key [{}] incremented'.format(key))
+        return (True, "Key [{}] incremented".format(key))
 
 def handle_append(key, value):
     return_value = exists, list_value = handle_get(key)
@@ -116,16 +111,28 @@ def handle_append(key, value):
         return (False, "TypeError: Key [{}] contains not-list value ([{}])".format(key, value))
     else:
         DATA[key].append(value)
-        return (True, 'Key [{}] had value [{}] appended'.format(key, value))
+        return (True, "Key [{}] had value [{}] appended".format(key, value))
 
 def handle_delete(key):
     if key in DATA_STORE:
         del DATA_STORE[key]
     else:
-        return (False, 'KeyError: Key [{}] not found and could not be deleted'.format(key))
+        return (False, "KeyError: Key [{}] not found and could not be deleted".format(key))
 
 def handle_stats():
     return (True, str(STATS))
+
+# Look up table
+COMMAND_HANDLERS = {
+    'PUT': handle_put,
+    'GET': handle_get,
+    'GETLIST': handle_getlist,
+    'PUTLIST': handle_putlist,
+    'INCREMENT': handle_increment,
+    'APPEND': handle_append,
+    'DELETE': handle_delete,
+    'STATS': handle_stats,
+}
 
 if __name__ == '__main__':
     main()
