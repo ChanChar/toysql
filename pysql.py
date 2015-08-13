@@ -68,19 +68,16 @@ def parse_message(data):
 
 # Common Handlers
 
-# Increment stats based on success or failure of command.
 def update_stats(command, success):
     if success:
         STATS[command]['success'] += 1
     else:
         STATS[command]['error'] += 1
 
-# return success and command response message
 def handle_put(key, value):
     DATA_STORE[key] = value
     return (True, 'Key [{}] set to [{}]'.format(key, value))
 
-# return value if key was set else return error
 def handle_get(key):
     if key in DATA_STORE:
         return (True, DATA_STORE[key])
@@ -88,20 +85,47 @@ def handle_get(key):
         return (False, 'KeyError: Key [{}] not found'.format(key))
 
 def handle_putlist(key, value):
-    # add type check for list.
     return handle_put(key, value)
 
 def handle_getlist(key):
-    return_value, value = exists, handle_get(key)
+    return_value = exists, value = handle_get(key)
 
     if not exists:
         return return_value
     elif not isinstance(value, list):
-        return (False, "KeyError: Key [{}] contains non-list values ([{}])".format(key, value))
+        return (False, "TypeError: Key [{}] contains non-list values ([{}])".format(key, value))
     else:
         return return_value
 
+def handle_increment(key):
+    return_value = exists, value = handle_get(key)
 
+    if not exists:
+        return return_value
+    elif not isinstance(value, int):
+        return (False, "TypeError: Key [{}] contains not-integer values ([{}])".format(key, value))
+    else:
+        DATA_STORE[key] = value + 1
+        return (True, 'Key [{}] incremented'.format(key))
+
+def handle_append(key, value):
+    return_value = exists, list_value = handle_get(key)
+    if not exists:
+        return return_value
+    elif not isinstance(list_value, list):
+        return (False, "TypeError: Key [{}] contains not-list value ([{}])".format(key, value))
+    else:
+        DATA[key].append(value)
+        return (True, 'Key [{}] had value [{}] appended'.format(key, value))
+
+def handle_delete(key):
+    if key in DATA_STORE:
+        del DATA_STORE[key]
+    else:
+        return (False, 'KeyError: Key [{}] not found and could not be deleted'.format(key))
+
+def handle_stats():
+    return (True, str(STATS))
 
 if __name__ == '__main__':
     main()
