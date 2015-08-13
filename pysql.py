@@ -1,4 +1,5 @@
 import socket
+from _thread import *
 
 # Set up stats, command handlers and data store.
 HOST = 'localhost'
@@ -17,36 +18,6 @@ STATS = {
 
 DATA_STORE = {}
 
-def main():
-    SOCKET.bind((HOST, PORT))
-    SOCKET.listen(1)
-
-    while True:
-        connection, address = SOCKET.accept()
-        print("New connection from [{}]".format(address))
-        data = connection.recv(4096).decode()
-
-        if data.startswith('CLOSE'):
-            connection.close()
-            return
-
-        command, key, value = parse_message(data)
-
-        if command == 'STATS':
-            response = handle_stats()
-        elif command in ('GET', 'GETLIST', 'INCREMENT', 'DELETE'):
-            response = COMMAND_HANDLERS[command](key)
-        elif command in ('PUT', 'PUTLIST', 'APPEND'):
-            response = COMMAND_HANDLERS[command](key, value)
-        else:
-            response = (False, 'Unknown command type [{}]'.format(command))
-
-        update_stats(command, response[0])
-
-        # Python3 specific
-        to_bytes = ("{};{}".format(response[0], response[1])).encode()
-        connection.sendall(to_bytes)
-
 # Parse and convert values into given type.
 def parse_message(data):
     command, key, value, value_type = data.strip().split(';')
@@ -64,6 +35,9 @@ def parse_message(data):
 # Common Handlers
 
 def update_stats(command, success):
+    if command not in STATS:
+        return "KeyError: {} is not a recognized command\n".format(command)
+
     if success:
         STATS[command]['success'] += 1
     else:
@@ -71,13 +45,13 @@ def update_stats(command, success):
 
 def handle_put(key, value):
     DATA_STORE[key] = value
-    return (True, "Key [{}] set to [{}]".format(key, value))
+    return (True, "Key [{}] set to [{}]\n".format(key, value))
 
 def handle_get(key):
     if key in DATA_STORE:
         return (True, DATA_STORE[key])
     else:
-        return (False, "KeyError: Key [{}] not found".format(key))
+        return (False, "KeyError: Key [{}] not found\n".format(key))
 
 def handle_putlist(key, value):
     return handle_put(key, value)
@@ -88,7 +62,7 @@ def handle_getlist(key):
     if not exists:
         return return_value
     elif not isinstance(value, list):
-        return (False, "TypeError: Key [{}] contains non-list values ([{}])".format(key, value))
+        return (False, "TypeError: Key [{}] contains non-list values ([{}])\n".format(key, value))
     else:
         return return_value
 
@@ -98,29 +72,30 @@ def handle_increment(key):
     if not exists:
         return return_value
     elif not isinstance(value, int):
-        return (False, "TypeError: Key [{}] contains not-integer values ([{}])".format(key, value))
+        return (False, "TypeError: Key [{}] contains not-integer values ([{}])\n".format(key, value))
     else:
         DATA_STORE[key] = value + 1
-        return (True, "Key [{}] incremented".format(key))
+        return (True, "Key [{}] incremented\n".format(key))
 
 def handle_append(key, value):
     return_value = exists, list_value = handle_get(key)
     if not exists:
         return return_value
     elif not isinstance(list_value, list):
-        return (False, "TypeError: Key [{}] contains not-list value ([{}])".format(key, value))
+        return (False, "TypeError: Key [{}] contains not-list value ([{}])\n".format(key, value))
     else:
-        DATA[key].append(value)
-        return (True, "Key [{}] had value [{}] appended".format(key, value))
+        DATA_STORE[key].append(value)
+        return (True, "Key [{}] had value [{}] appended\n".format(key, value))
 
 def handle_delete(key):
     if key in DATA_STORE:
         del DATA_STORE[key]
+        return (True, "Key [{}] was successfully deleted\n".format(key))
     else:
-        return (False, "KeyError: Key [{}] not found and could not be deleted".format(key))
+        return (False, "KeyError: Key [{}] not found and could not be deleted\n".format(key))
 
 def handle_stats():
-    return (True, str(STATS))
+    return (True, "/n".join(["{}: {}".format(command, stat) for command, stat in STATS.iteritems()]))
 
 # Look up table
 COMMAND_HANDLERS = {
@@ -133,6 +108,40 @@ COMMAND_HANDLERS = {
     'DELETE': handle_delete,
     'STATS': handle_stats,
 }
+
+def handle_connection(conn):
+    conn.send('The NoSQL-like DB is up and running. Be sure to use valid formatted commands.\n'.encode())
+
+    while True:
+        data = conn.recv(4096).decode()
+        command, key, value = parse_message(data)
+
+        if command == 'STATS':
+            response = handle_stats()
+        elif command in ('GET', 'GETLIST', 'INCREMENT', 'DELETE'):
+            response = COMMAND_HANDLERS[command](key)
+        elif command in ('PUT', 'PUTLIST', 'APPEND'):
+            response = COMMAND_HANDLERS[command](key, value)
+        else:
+            response = (False, "Unknown command type [{}]\n".format(command))
+
+        update_stats(command, response[0])
+
+        # Python3 specific
+        to_bytes = ("{};{}".format(response[0], response[1])).encode()
+        conn.sendall(to_bytes)
+    conn.close()
+
+def main():
+    SOCKET.bind((HOST, PORT))
+    SOCKET.listen(1)
+
+    while True:
+        connection, address = SOCKET.accept()
+        print("New connection from [{}]\n".format(address))
+        start_new_thread(handle_connection, (connection,))
+
+    SOCKET.close()
 
 if __name__ == '__main__':
     main()
